@@ -1,8 +1,7 @@
 const Expense = require("../models/expenseModel");
 
-// @desc    Get all expenses
+
 // @route   GET /api/expenses
-// @access  Public
 const getExpenses = async (req, res) => {
   try {
     const expenses = await Expense.find({});
@@ -12,9 +11,8 @@ const getExpenses = async (req, res) => {
   }
 };
 
-// @desc    Add new expense
+
 // @route   POST /api/expenses
-// @access  Public
 const addExpense = async (req, res) => {
   try {
     const { description, amount, paidBy, participants } = req.body;
@@ -40,9 +38,8 @@ const addExpense = async (req, res) => {
   }
 };
 
-// @desc    Update expense
+
 // @route   PUT /api/expenses/:id
-// @access  Public
 const updateExpense = async (req, res) => {
   try {
     const { id } = req.params;
@@ -77,22 +74,8 @@ const updateExpense = async (req, res) => {
       expense.paidBy = paidBy;
     }
 
-    // Store original amount for proportional scaling if only amount is updated
-    const originalAmount = expense.amount;
-
-    // Handle amount update and proportional participant share adjustment
-    if (amount !== undefined && amount !== originalAmount) {
-      if (expense.participants && expense.participants.length > 0) {
-        const ratio = amount / originalAmount;
-        expense.participants = expense.participants.map(p => ({
-          ...p.toObject(), // Convert Mongoose document to plain object
-          share: parseFloat((p.share * ratio).toFixed(2))
-        }));
-      }
-      expense.amount = amount;
-    }
-
-    // If participants are explicitly provided in the request, they override any automatic adjustments
+    // Handle amount update and participant share adjustment
+    // If participants are explicitly provided, they override any automatic adjustments
     if (participants !== undefined) {
       if (!Array.isArray(participants)) {
         return res.status(400).json({ message: "Participants must be an array" });
@@ -109,6 +92,19 @@ const updateExpense = async (req, res) => {
         }
       }
       expense.participants = participants;
+      expense.amount = amount !== undefined ? amount : expense.amount; // Update amount if provided with participants
+    } else if (amount !== undefined && amount !== expense.amount) {
+      // If amount is updated but participants are NOT explicitly provided, re-calculate shares equally
+      if (expense.participants && expense.participants.length > 0) {
+        const numParticipants = expense.participants.length;
+        const newSharePerPerson = parseFloat((amount / numParticipants).toFixed(2));
+        expense.participants = expense.participants.map(p => ({
+          ...p.toObject(),
+          share: newSharePerPerson,
+          type: "exact" // Assuming equal split implies exact share type
+        }));
+      }
+      expense.amount = amount;
     }
 
     const updatedExpense = await expense.save();
@@ -119,9 +115,8 @@ const updateExpense = async (req, res) => {
   }
 };
 
-// @desc    Delete expense
+
 // @route   DELETE /api/expenses/:id
-// @access  Public
 const deleteExpense = async (req, res) => {
   try {
     const { id } = req.params;
