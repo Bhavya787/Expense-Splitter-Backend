@@ -33,7 +33,7 @@ Follow these instructions to set up and run the project locally.
 
     ```bash
     git clone <repository_url>
-    cd expense-splitter-backend
+    cd Expense-Splitter-Backend
     ```
 
 2.  **Install dependencies:**
