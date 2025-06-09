@@ -32,8 +32,9 @@ Follow these instructions to set up and run the project locally.
 1.  **Clone the repository:**
 
     ```bash
-    git clone <repository_url>
+    git clone https://github.com/Bhavya787/Expense-Splitter-Backend.git
     cd Expense-Splitter-Backend
+
     ```
 
 2.  **Install dependencies:**
