@@ -5,64 +5,73 @@ const calculateBalances = async () => {
   const expenses = await Expense.find({});
   const balances = {};
 
-  // First, get all people involved in expenses (needed for fallback logic)
-  const allPeople = new Set();
-  expenses.forEach(expense => {
-    allPeople.add(expense.paidBy);
-    if (expense.participants && expense.participants.length > 0) {
-      expense.participants.forEach(p => allPeople.add(p.name));
-    }
-  });
-
   expenses.forEach((expense) => {
     const paidBy = expense.paidBy;
     const amount = expense.amount;
 
-    // Initialize balance for payer if not exists
     if (!balances[paidBy]) {
       balances[paidBy] = 0;
     }
-    // Person who paid gets credited
     balances[paidBy] += amount;
 
-    // Handle different splitting scenarios
+    let totalShare = 0;
     if (expense.participants && expense.participants.length > 0) {
-      expense.participants.forEach((participant) => {
-        // Initialize balance for participant if not exists
-        if (!balances[participant.name]) {
-          balances[participant.name] = 0;
+      expense.participants.forEach((p) => {
+        if (p.type === "percentage") {
+          totalShare += (amount * p.share) / 100;
+        } else if (p.type === "exact") {
+          totalShare += p.share;
+        } else if (p.type === "share") {
+          // For 'share' type, we'll assume equal distribution if not specified otherwise
+          // This part might need more complex logic based on how 'share' is defined
+          // For now, we'll treat it as an equal share if no specific value is given
+          totalShare += p.share; // Assuming p.share is the actual share value
         }
-
-        let shareAmount = 0;
-
-        if (participant.type === "percentage") {
-          shareAmount = (amount * participant.share) / 100;
-        } else if (participant.type === "exact") {
-          shareAmount = participant.share;
-        } else if (participant.type === "share") {
-          // Calculate proportional share
-          const totalShares = expense.participants.reduce((sum, p) => {
-            return sum + (p.type === "share" ? p.share : 0);
-          }, 0);
-          
-          if (totalShares > 0) {
-            shareAmount = (amount * participant.share) / totalShares;
-          }
-        }
-
-        // Participant owes their share
-        balances[participant.name] -= shareAmount;
       });
     } else {
-      // No participants specified - split equally among all people
-      const sharePerPerson = amount / allPeople.size;
-      
-      allPeople.forEach(person => {
-        if (!balances[person]) {
-          balances[person] = 0;
-        }
-        balances[person] -= sharePerPerson;
+      // If no participants are specified, assume equal split among all people involved in expenses
+      // This is a simplification and might need refinement based on exact requirements
+      const allPeople = new Set();
+      expenses.forEach(e => {
+        allPeople.add(e.paidBy);
+        e.participants.forEach(p => allPeople.add(p.name));
       });
+      const numPeople = allPeople.size;
+      if (numPeople > 0) {
+        totalShare = amount; // Distribute total amount among all people
+      }
+    }
+
+    if (expense.participants && expense.participants.length > 0) {
+      expense.participants.forEach((p) => {
+        if (!balances[p.name]) {
+          balances[p.name] = 0;
+        }
+        if (p.type === "percentage") {
+          balances[p.name] -= (amount * p.share) / 100;
+        } else if (p.type === "exact") {
+          balances[p.name] -= p.share;
+        } else if (p.type === "share") {
+          balances[p.name] -= p.share; // Assuming p.share is the actual share value
+        }
+      });
+    } else {
+      // If no participants, distribute equally among all people involved in expenses
+      const allPeople = new Set();
+      expenses.forEach(e => {
+        allPeople.add(e.paidBy);
+        e.participants.forEach(p => allPeople.add(p.name));
+      });
+      const numPeople = allPeople.size;
+      if (numPeople > 0) {
+        const sharePerPerson = amount / numPeople;
+        allPeople.forEach(person => {
+          if (!balances[person]) {
+            balances[person] = 0;
+          }
+          balances[person] -= sharePerPerson;
+        });
+      }
     }
   });
 
@@ -71,18 +80,15 @@ const calculateBalances = async () => {
 
 // @desc    Get all people involved in expenses
 // @route   GET /api/people
+// @access  Public
 const getPeople = async (req, res) => {
   try {
     const expenses = await Expense.find({});
     const people = new Set();
-    
     expenses.forEach((expense) => {
       people.add(expense.paidBy);
-      if (expense.participants && expense.participants.length > 0) {
-        expense.participants.forEach((p) => people.add(p.name));
-      }
+      expense.participants.forEach((p) => people.add(p.name));
     });
-    
     res.status(200).json(Array.from(people));
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -91,6 +97,7 @@ const getPeople = async (req, res) => {
 
 // @desc    Get current balances (owes/owed)
 // @route   GET /api/balances
+// @access  Public
 const getBalances = async (req, res) => {
   try {
     const balances = await calculateBalances();
@@ -102,53 +109,45 @@ const getBalances = async (req, res) => {
 
 // @desc    Calculate simplified settlements
 // @route   GET /api/settlements
+// @access  Public
 const getSettlements = async (req, res) => {
   try {
     const balances = await calculateBalances();
     const creditors = [];
     const debtors = [];
 
-    // Separate creditors (owed money) and debtors (owe money)
     for (const person in balances) {
-      if (balances[person] > 0.01) { // Small tolerance for floating point errors
+      if (balances[person] > 0) {
         creditors.push({ person, amount: balances[person] });
-      } else if (balances[person] < -0.01) {
+      } else if (balances[person] < 0) {
         debtors.push({ person, amount: Math.abs(balances[person]) });
       }
     }
 
-    // Sort by amount (largest first) for optimal settlement
     creditors.sort((a, b) => b.amount - a.amount);
     debtors.sort((a, b) => b.amount - a.amount);
 
     const settlements = [];
 
-    // Calculate minimum transactions needed
     while (creditors.length > 0 && debtors.length > 0) {
       const creditor = creditors[0];
       const debtor = debtors[0];
 
-      const settlementAmount = Math.min(creditor.amount, debtor.amount);
-      
-      // Round to 2 decimal places to avoid floating point issues
-      const roundedAmount = Math.round(settlementAmount * 100) / 100;
+      const minAmount = Math.min(creditor.amount, debtor.amount);
 
-      if (roundedAmount > 0.01) { // Only add settlements above 1 cent
-        settlements.push({
-          from: debtor.person,
-          to: creditor.person,
-          amount: roundedAmount,
-        });
-      }
+      settlements.push({
+        from: debtor.person,
+        to: creditor.person,
+        amount: minAmount,
+      });
 
-      creditor.amount -= settlementAmount;
-      debtor.amount -= settlementAmount;
+      creditor.amount -= minAmount;
+      debtor.amount -= minAmount;
 
-      // Remove settled parties
-      if (creditor.amount < 0.01) {
+      if (creditor.amount === 0) {
         creditors.shift();
       }
-      if (debtor.amount < 0.01) {
+      if (debtor.amount === 0) {
         debtors.shift();
       }
     }
@@ -164,3 +163,4 @@ module.exports = {
   getBalances,
   getSettlements,
 };
+
