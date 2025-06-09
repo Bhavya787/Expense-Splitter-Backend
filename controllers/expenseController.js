@@ -1,166 +1,149 @@
 const Expense = require("../models/expenseModel");
 
-// Helper function to calculate balances
-const calculateBalances = async () => {
-  const expenses = await Expense.find({});
-  const balances = {};
-
-  expenses.forEach((expense) => {
-    const paidBy = expense.paidBy;
-    const amount = expense.amount;
-
-    if (!balances[paidBy]) {
-      balances[paidBy] = 0;
-    }
-    balances[paidBy] += amount;
-
-    let totalShare = 0;
-    if (expense.participants && expense.participants.length > 0) {
-      expense.participants.forEach((p) => {
-        if (p.type === "percentage") {
-          totalShare += (amount * p.share) / 100;
-        } else if (p.type === "exact") {
-          totalShare += p.share;
-        } else if (p.type === "share") {
-          // For 'share' type, we'll assume equal distribution if not specified otherwise
-          // This part might need more complex logic based on how 'share' is defined
-          // For now, we'll treat it as an equal share if no specific value is given
-          totalShare += p.share; // Assuming p.share is the actual share value
-        }
-      });
-    } else {
-      // If no participants are specified, assume equal split among all people involved in expenses
-      // This is a simplification and might need refinement based on exact requirements
-      const allPeople = new Set();
-      expenses.forEach(e => {
-        allPeople.add(e.paidBy);
-        e.participants.forEach(p => allPeople.add(p.name));
-      });
-      const numPeople = allPeople.size;
-      if (numPeople > 0) {
-        totalShare = amount; // Distribute total amount among all people
-      }
-    }
-
-    if (expense.participants && expense.participants.length > 0) {
-      expense.participants.forEach((p) => {
-        if (!balances[p.name]) {
-          balances[p.name] = 0;
-        }
-        if (p.type === "percentage") {
-          balances[p.name] -= (amount * p.share) / 100;
-        } else if (p.type === "exact") {
-          balances[p.name] -= p.share;
-        } else if (p.type === "share") {
-          balances[p.name] -= p.share; // Assuming p.share is the actual share value
-        }
-      });
-    } else {
-      // If no participants, distribute equally among all people involved in expenses
-      const allPeople = new Set();
-      expenses.forEach(e => {
-        allPeople.add(e.paidBy);
-        e.participants.forEach(p => allPeople.add(p.name));
-      });
-      const numPeople = allPeople.size;
-      if (numPeople > 0) {
-        const sharePerPerson = amount / numPeople;
-        allPeople.forEach(person => {
-          if (!balances[person]) {
-            balances[person] = 0;
-          }
-          balances[person] -= sharePerPerson;
-        });
-      }
-    }
-  });
-
-  return balances;
-};
-
-// @desc    Get all people involved in expenses
-// @route   GET /api/people
+// @desc    Get all expenses
+// @route   GET /api/expenses
 // @access  Public
-const getPeople = async (req, res) => {
+const getExpenses = async (req, res) => {
   try {
     const expenses = await Expense.find({});
-    const people = new Set();
-    expenses.forEach((expense) => {
-      people.add(expense.paidBy);
-      expense.participants.forEach((p) => people.add(p.name));
+    res.status(200).json(expenses);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Add new expense
+// @route   POST /api/expenses
+// @access  Public
+const addExpense = async (req, res) => {
+  try {
+    const { description, amount, paidBy, participants } = req.body;
+
+    if (!description || !amount || !paidBy) {
+      return res.status(400).json({ message: "Please enter all required fields: description, amount, paidBy" });
+    }
+
+    if (amount <= 0) {
+      return res.status(400).json({ message: "Amount must be a positive number" });
+    }
+
+    const expense = await Expense.create({
+      description,
+      amount,
+      paidBy,
+      participants: participants || [],
     });
-    res.status(200).json(Array.from(people));
+
+    res.status(201).json({ success: true, data: expense, message: "Expense added successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// @desc    Get current balances (owes/owed)
-// @route   GET /api/balances
+// @desc    Update expense
+// @route   PUT /api/expenses/:id
 // @access  Public
-const getBalances = async (req, res) => {
+const updateExpense = async (req, res) => {
   try {
-    const balances = await calculateBalances();
-    res.status(200).json(balances);
+    const { id } = req.params;
+    const { description, amount, paidBy, participants } = req.body;
+
+    const expense = await Expense.findById(id);
+
+    if (!expense) {
+      return res.status(404).json({ message: "Expense not found" });
+    }
+
+    // Validate amount if provided
+    if (amount !== undefined) {
+      if (amount <= 0) {
+        return res.status(400).json({ message: "Amount must be a positive number" });
+      }
+    }
+
+    // Validate description if provided and not empty
+    if (description !== undefined) {
+      if (typeof description !== 'string' || description.trim() === '') {
+        return res.status(400).json({ message: "Description cannot be empty" });
+      }
+      expense.description = description;
+    }
+
+    // Validate paidBy if provided and not empty
+    if (paidBy !== undefined) {
+      if (typeof paidBy !== 'string' || paidBy.trim() === '') {
+        return res.status(400).json({ message: "PaidBy cannot be empty" });
+      }
+      expense.paidBy = paidBy;
+    }
+
+    // Store original amount for proportional scaling if only amount is updated
+    const originalAmount = expense.amount;
+
+    // Handle amount update and proportional participant share adjustment
+    if (amount !== undefined && amount !== originalAmount) {
+      if (expense.participants && expense.participants.length > 0) {
+        const ratio = amount / originalAmount;
+        expense.participants = expense.participants.map(p => ({
+          ...p.toObject(), // Convert Mongoose document to plain object
+          share: parseFloat((p.share * ratio).toFixed(2))
+        }));
+      }
+      expense.amount = amount;
+    }
+
+    // If participants are explicitly provided in the request, they override any automatic adjustments
+    if (participants !== undefined) {
+      if (!Array.isArray(participants)) {
+        return res.status(400).json({ message: "Participants must be an array" });
+      }
+      for (const p of participants) {
+        if (!p.name || typeof p.share === 'undefined') {
+          return res.status(400).json({ message: "Each participant must have a name and a share" });
+        }
+        if (typeof p.name !== 'string' || p.name.trim() === '') {
+          return res.status(400).json({ message: "Participant name cannot be empty" });
+        }
+        if (typeof p.share !== 'number' || p.share < 0) {
+          return res.status(400).json({ message: "Participant share must be a non-negative number" });
+        }
+      }
+      expense.participants = participants;
+    }
+
+    const updatedExpense = await expense.save();
+
+    res.status(200).json({ success: true, data: updatedExpense, message: "Expense updated successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// @desc    Calculate simplified settlements
-// @route   GET /api/settlements
+// @desc    Delete expense
+// @route   DELETE /api/expenses/:id
 // @access  Public
-const getSettlements = async (req, res) => {
+const deleteExpense = async (req, res) => {
   try {
-    const balances = await calculateBalances();
-    const creditors = [];
-    const debtors = [];
+    const { id } = req.params;
 
-    for (const person in balances) {
-      if (balances[person] > 0) {
-        creditors.push({ person, amount: balances[person] });
-      } else if (balances[person] < 0) {
-        debtors.push({ person, amount: Math.abs(balances[person]) });
-      }
+    const expense = await Expense.findById(id);
+
+    if (!expense) {
+      return res.status(404).json({ message: "Expense not found" });
     }
 
-    creditors.sort((a, b) => b.amount - a.amount);
-    debtors.sort((a, b) => b.amount - a.amount);
+    await expense.deleteOne();
 
-    const settlements = [];
-
-    while (creditors.length > 0 && debtors.length > 0) {
-      const creditor = creditors[0];
-      const debtor = debtors[0];
-
-      const minAmount = Math.min(creditor.amount, debtor.amount);
-
-      settlements.push({
-        from: debtor.person,
-        to: creditor.person,
-        amount: minAmount,
-      });
-
-      creditor.amount -= minAmount;
-      debtor.amount -= minAmount;
-
-      if (creditor.amount === 0) {
-        creditors.shift();
-      }
-      if (debtor.amount === 0) {
-        debtors.shift();
-      }
-    }
-
-    res.status(200).json(settlements);
+    res.status(200).json({ success: true, message: "Expense removed successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
 module.exports = {
-  getPeople,
-  getBalances,
-  getSettlements,
+  getExpenses,
+  addExpense,
+  updateExpense,
+  deleteExpense,
 };
 
