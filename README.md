@@ -42,17 +42,6 @@ Follow these instructions to set up and run the project locally.
     npm install
     ```
 
-### Environment Variables
-
-Create a `.env` file in the root of the project and add the following environment variables:
-
-```
-PORT=3000
-MONGODB_URI=your_mongodb_atlas_connection_string_here
-```
-
-*   `PORT`: The port on which the server will run (e.g., `3000`).
-*   `MONGODB_URI`: Your MongoDB Atlas connection string. You can obtain this from your MongoDB Atlas dashboard. Remember to replace `<username>` and `<password>` with your actual database user credentials.
 
 ### Running the Application
 
