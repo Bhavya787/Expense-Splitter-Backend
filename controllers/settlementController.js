@@ -71,7 +71,6 @@ const calculateBalances = async () => {
 
 // @desc    Get all people involved in expenses
 // @route   GET /api/people
-// @access  Public
 const getPeople = async (req, res) => {
   try {
     const expenses = await Expense.find({});
@@ -92,7 +91,6 @@ const getPeople = async (req, res) => {
 
 // @desc    Get current balances (owes/owed)
 // @route   GET /api/balances
-// @access  Public
 const getBalances = async (req, res) => {
   try {
     const balances = await calculateBalances();
@@ -104,7 +102,6 @@ const getBalances = async (req, res) => {
 
 // @desc    Calculate simplified settlements
 // @route   GET /api/settlements
-// @access  Public
 const getSettlements = async (req, res) => {
   try {
     const balances = await calculateBalances();
