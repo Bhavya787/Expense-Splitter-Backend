@@ -54,14 +54,37 @@ const updateExpense = async (req, res) => {
       return res.status(404).json({ message: "Expense not found" });
     }
 
-    if (amount && amount <= 0) {
+    if (amount !== undefined && amount <= 0) {
       return res.status(400).json({ message: "Amount must be a positive number" });
     }
 
-    expense.description = description || expense.description;
-    expense.amount = amount || expense.amount;
-    expense.paidBy = paidBy || expense.paidBy;
-    expense.participants = participants || expense.participants;
+    // Store original amount for proportional scaling if only amount is updated
+    const originalAmount = expense.amount;
+
+    // Update basic fields if provided
+    if (description !== undefined) {
+      expense.description = description;
+    }
+    if (paidBy !== undefined) {
+      expense.paidBy = paidBy;
+    }
+
+    // Handle amount update and proportional participant share adjustment
+    if (amount !== undefined && amount !== originalAmount) {
+      if (expense.participants && expense.participants.length > 0) {
+        const ratio = amount / originalAmount;
+        expense.participants = expense.participants.map(p => ({
+          ...p.toObject(), // Convert Mongoose document to plain object
+          share: parseFloat((p.share * ratio).toFixed(2))
+        }));
+      }
+      expense.amount = amount;
+    }
+
+    // If participants are explicitly provided in the request, they override any automatic adjustments
+    if (participants !== undefined) {
+      expense.participants = participants;
+    }
 
     const updatedExpense = await expense.save();
 
@@ -98,4 +121,3 @@ module.exports = {
   updateExpense,
   deleteExpense,
 };
-
