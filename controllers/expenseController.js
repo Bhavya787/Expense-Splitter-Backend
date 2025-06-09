@@ -2,7 +2,6 @@ const Expense = require("../models/expenseModel");
 
 // @desc    Get all expenses
 // @route   GET /api/expenses
-// @access  Public
 const getExpenses = async (req, res) => {
   try {
     const expenses = await Expense.find({});
@@ -14,7 +13,6 @@ const getExpenses = async (req, res) => {
 
 // @desc    Add new expense
 // @route   POST /api/expenses
-// @access  Public
 const addExpense = async (req, res) => {
   try {
     const { description, amount, paidBy, participants } = req.body;
@@ -42,7 +40,6 @@ const addExpense = async (req, res) => {
 
 // @desc    Update expense
 // @route   PUT /api/expenses/:id
-// @access  Public
 const updateExpense = async (req, res) => {
   try {
     const { id } = req.params;
