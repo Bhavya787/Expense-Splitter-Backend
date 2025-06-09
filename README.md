@@ -43,6 +43,17 @@ Follow these instructions to set up and run the project locally.
     npm install
     ```
 
+### Environment Variables
+
+Create a `.env` file in the root of the project and add the following environment variables:
+
+```
+PORT=3000
+MONGODB_URI=your_mongodb_atlas_connection_string_here
+```
+
+*   `PORT`: The port on which the server will run (e.g., `3000`).
+*   `MONGODB_URI`: Your MongoDB Atlas connection string. You can obtain this from your MongoDB Atlas dashboard. Remember to replace `<username>` and `<password>` with your actual database user credentials.
 
 ### Running the Application
 
@@ -101,7 +112,51 @@ The following API endpoints are available:
 
 A Postman collection is provided to easily test all API endpoints. You can find the `Expense_Splitter_APIs.postman_collection.json` file in the root directory of this project.
 
+### How to Use the Postman Collection
+
+1.  **Import Collection**: Open Postman and import the `Expense_Splitter_APIs.postman_collection.json` file.
+2.  **Set Environment Variable**: Create a Postman environment and set a variable named `BASE_URL` to `http://localhost:3000` (for local testing) or your deployed API URL.
+3.  **Run Requests**: You can now run the requests within the collection to test the API.
+
+## Deployment
+
+Detailed deployment instructions for Render.com and MongoDB Atlas are available in the `DEPLOYMENT_INSTRUCTIONS.md` file.
 
 
+
+## Settlement Calculation Logic
+
+The core of this expense splitter application lies in its ability to accurately calculate individual balances and then simplify the transactions required to settle all debts. This logic is primarily handled within the `controllers/settlementController.js` file.
+
+### 1. Calculating Balances (`calculateBalances` function)
+
+This internal helper function is responsible for determining the net balance for each person involved in the expenses. It iterates through all recorded expenses and performs the following steps:
+
+*   **Tracks Money Paid**: For each expense, it adds the `amount` to the `paidBy` person's balance. This reflects how much money each person has put into the group pot.
+*   **Tracks Individual Shares**: For each participant in an expense, it subtracts their `share` from their balance. The interpretation of `share` depends on its `type`:
+    *   **`exact`**: The `share` value is taken as an absolute amount that the participant is responsible for.
+    *   **`percentage`**: The `share` is treated as a percentage of the total expense `amount`. For example, if an expense is $100 and a participant's share is 25% (type: "percentage"), $25 is subtracted from their balance.
+    *   **`share` (unit-based)**: In this implementation, if an expense is updated without explicit participant shares, and the `amount` is changed, the system will automatically re-calculate shares equally among existing participants, setting their type to `"exact"`. If `share` type is used in the initial expense creation, the `share` value is treated as an exact amount.
+*   **Handling Undefined Participants**: If an expense is added without specific participants, the system currently assumes an equal split among all people who have ever been involved in any expense (either as `paidBy` or as a `participant`). This is a simplification and ensures that all money is accounted for.
+
+After processing all expenses, the `calculateBalances` function returns an object where keys are person names and values are their net balances. A positive balance means the person is owed money, and a negative balance means the person owes money.
+
+### 2. Simplifying Settlements (`getSettlements` function)
+
+This function takes the balances calculated by `calculateBalances` and determines the most efficient way to settle all debts, minimizing the number of transactions. It employs a common algorithm for debt simplification:
+
+*   **Categorize Creditors and Debtors**: It separates people into two groups:
+    *   **Creditors**: Those with a positive balance (owed money).
+    *   **Debtors**: Those with a negative balance (owe money).
+*   **Sort by Amount**: Both lists are sorted in descending order of the absolute amount they are owed or owe. This helps in efficiently matching large debts/credits.
+*   **Iterative Settlement**: The algorithm then iteratively matches the largest debtor with the largest creditor:
+    1.  It takes the top debtor and the top creditor.
+    2.  It determines the `minAmount` between what the debtor owes and what the creditor is owed.
+    3.  A settlement transaction is recorded: the debtor pays the creditor the `minAmount`.
+    4.  The `minAmount` is subtracted from both the debtor's outstanding debt and the creditor's outstanding credit.
+    5.  If a debtor's debt becomes zero, they are removed from the debtors list. Similarly, if a creditor's credit becomes zero, they are removed from the creditors list.
+    6.  This process continues until both the creditors and debtors lists are empty, meaning all debts have been settled.
+
+This approach ensures that the total number of transactions is minimized, making it easier for individuals to settle their accounts. The output is an array of objects, each representing a payment from one person to another, along with the amount.
 
 
