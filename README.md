@@ -49,7 +49,7 @@ Create a `.env` file in the root of the project and add the following environmen
 
 ```
 PORT=3000
-MONGODB_URI=your_mongodb_atlas_connection_string_here
+MONGODB_URI=mongodb+srv://bhavya22210383:ts7URGdl5jcf4Hhw@splitter.5t7o6gy.mongodb.net/?retryWrites=true&w=majority&appName=Splitter
 ```
 
 *   `PORT`: The port on which the server will run (e.g., `3000`).
