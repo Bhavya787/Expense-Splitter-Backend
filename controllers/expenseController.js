@@ -54,20 +54,31 @@ const updateExpense = async (req, res) => {
       return res.status(404).json({ message: "Expense not found" });
     }
 
-    if (amount !== undefined && amount <= 0) {
-      return res.status(400).json({ message: "Amount must be a positive number" });
+    // Validate amount if provided
+    if (amount !== undefined) {
+      if (amount <= 0) {
+        return res.status(400).json({ message: "Amount must be a positive number" });
+      }
+    }
+
+    // Validate description if provided and not empty
+    if (description !== undefined) {
+      if (typeof description !== 'string' || description.trim() === '') {
+        return res.status(400).json({ message: "Description cannot be empty" });
+      }
+      expense.description = description;
+    }
+
+    // Validate paidBy if provided and not empty
+    if (paidBy !== undefined) {
+      if (typeof paidBy !== 'string' || paidBy.trim() === '') {
+        return res.status(400).json({ message: "PaidBy cannot be empty" });
+      }
+      expense.paidBy = paidBy;
     }
 
     // Store original amount for proportional scaling if only amount is updated
     const originalAmount = expense.amount;
-
-    // Update basic fields if provided
-    if (description !== undefined) {
-      expense.description = description;
-    }
-    if (paidBy !== undefined) {
-      expense.paidBy = paidBy;
-    }
 
     // Handle amount update and proportional participant share adjustment
     if (amount !== undefined && amount !== originalAmount) {
@@ -83,6 +94,20 @@ const updateExpense = async (req, res) => {
 
     // If participants are explicitly provided in the request, they override any automatic adjustments
     if (participants !== undefined) {
+      if (!Array.isArray(participants)) {
+        return res.status(400).json({ message: "Participants must be an array" });
+      }
+      for (const p of participants) {
+        if (!p.name || typeof p.share === 'undefined') {
+          return res.status(400).json({ message: "Each participant must have a name and a share" });
+        }
+        if (typeof p.name !== 'string' || p.name.trim() === '') {
+          return res.status(400).json({ message: "Participant name cannot be empty" });
+        }
+        if (typeof p.share !== 'number' || p.share < 0) {
+          return res.status(400).json({ message: "Participant share must be a non-negative number" });
+        }
+      }
       expense.participants = participants;
     }
 
@@ -121,3 +146,4 @@ module.exports = {
   updateExpense,
   deleteExpense,
 };
+
