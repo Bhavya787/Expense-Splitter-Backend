@@ -34,7 +34,6 @@ Follow these instructions to set up and run the project locally.
     ```bash
     git clone https://github.com/Bhavya787/Expense-Splitter-Backend.git
     cd Expense-Splitter-Backend
-
     ```
 
 2.  **Install dependencies:**
@@ -45,15 +44,13 @@ Follow these instructions to set up and run the project locally.
 
 ### Environment Variables
 
-Create a `.env` file in the root of the project and add the following environment variables:
+
 
 ```
 PORT=3000
 MONGODB_URI=mongodb+srv://bhavya22210383:ts7URGdl5jcf4Hhw@splitter.5t7o6gy.mongodb.net/?retryWrites=true&w=majority&appName=Splitter
 ```
 
-*   `PORT`: The port on which the server will run (e.g., `3000`).
-*   `MONGODB_URI`: Your MongoDB Atlas connection string. You can obtain this from your MongoDB Atlas dashboard. Remember to replace `<username>` and `<password>` with your actual database user credentials.
 
 ### Running the Application
 
@@ -112,17 +109,6 @@ The following API endpoints are available:
 
 A Postman collection is provided to easily test all API endpoints. You can find the `Expense_Splitter_APIs.postman_collection.json` file in the root directory of this project.
 
-### How to Use the Postman Collection
-
-1.  **Import Collection**: Open Postman and import the `Expense_Splitter_APIs.postman_collection.json` file.
-2.  **Set Environment Variable**: Create a Postman environment and set a variable named `BASE_URL` to `http://localhost:3000` (for local testing) or your deployed API URL.
-3.  **Run Requests**: You can now run the requests within the collection to test the API.
-
-## Deployment
-
-Detailed deployment instructions for Render.com and MongoDB Atlas are available in the `DEPLOYMENT_INSTRUCTIONS.md` file.
-
-
 
 ## Settlement Calculation Logic
 
@@ -136,7 +122,7 @@ This internal helper function is responsible for determining the net balance for
 *   **Tracks Individual Shares**: For each participant in an expense, it subtracts their `share` from their balance. The interpretation of `share` depends on its `type`:
     *   **`exact`**: The `share` value is taken as an absolute amount that the participant is responsible for.
     *   **`percentage`**: The `share` is treated as a percentage of the total expense `amount`. For example, if an expense is $100 and a participant's share is 25% (type: "percentage"), $25 is subtracted from their balance.
-    *   **`share` (unit-based)**: In this implementation, if an expense is updated without explicit participant shares, and the `amount` is changed, the system will automatically re-calculate shares equally among existing participants, setting their type to `"exact"`. If `share` type is used in the initial expense creation, the `share` value is treated as an exact amount.
+    *   **`share` (unit-based)**: If a participant's share `type` is "share" (e.g., `share: 1`), the `share` value is treated as a unit for proportional division. The expense `amount` is divided among all participants with `type: "share"` based on their respective `share` units. For example, if an expense is $280 and three participants each have `share: 1` of type "share", they will each be responsible for $93.33 (280 / 3).
 *   **Handling Undefined Participants**: If an expense is added without specific participants, the system currently assumes an equal split among all people who have ever been involved in any expense (either as `paidBy` or as a `participant`). This is a simplification and ensures that all money is accounted for.
 
 After processing all expenses, the `calculateBalances` function returns an object where keys are person names and values are their net balances. A positive balance means the person is owed money, and a negative balance means the person owes money.
@@ -159,4 +145,11 @@ This function takes the balances calculated by `calculateBalances` and determine
 
 This approach ensures that the total number of transactions is minimized, making it easier for individuals to settle their accounts. The output is an array of objects, each representing a payment from one person to another, along with the amount.
 
+## Known Limitations or Assumptions
+
+*   **User Authentication/Authorization**: The application currently does not implement user authentication or authorization. Any user can access and modify expenses.
+*   **Recurring Expenses**: There is no built-in functionality for handling recurring expenses.
+*   **Currency Handling**: All amounts are treated as a single, generic currency. There is no support for multiple currencies or currency conversion.
+*   **Participant Management**: People are automatically added to the system when they are involved in an expense (either as `paidBy` or as a `participant`). There is no separate interface for managing a list of users or participants.
+*   **
 
